@@ -1,2 +1,2 @@
 # aws-delete-inactive-users
-Lambda function to delete users and access key which not used for over 90 days following CIS AWS Foundations
+Lambda function to delete users and access keys that have not been used for more than 90 days. This project follows CIS AWS Foundations guidelines.
