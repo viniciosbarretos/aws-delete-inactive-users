@@ -5,7 +5,7 @@
 import boto3
 import json
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from dateutil import parser
 from botocore.exceptions import ClientError
 from collections import namedtuple
@@ -34,8 +34,11 @@ except Exception as e:
 User = namedtuple('User', 'user arn user_creation_time password_enabled password_last_used password_last_changed password_next_rotation mfa_active access_key_1_active access_key_1_last_rotated access_key_1_last_used_date access_key_1_last_used_region access_key_1_last_used_service access_key_2_active access_key_2_last_rotated access_key_2_last_used_date access_key_2_last_used_region access_key_2_last_used_service cert_1_active cert_1_last_rotated cert_2_active cert_2_last_rotated')
 
 def lambda_handler(event, context):
-    # generate report
-    # response = client.generate_credential_report()
+    # generate report 
+    response = client.generate_credential_report()
+    
+    while response['State'] != 'COMPLETE':
+        time.sleep(2)
     
     # format report to readable
     response = client.get_credential_report()
@@ -146,7 +149,6 @@ def lambda_handler(event, context):
             create_log_cloudwatch(str_aux, 'user')
             print(e)
     
-    
     for user in never_logged_in_user:
         str_aux = str(user['username']) + '\t' + 'disable_console_access'
         try:
@@ -160,24 +162,58 @@ def lambda_handler(event, context):
             create_log_cloudwatch(str_aux, 'user')
             print(e)
             
-            
-#     for user in inactive_past_90_days_key:
-#         str_aux = str(user['username']) + '\t' + 'disable_access_key' + str(user['key'])
-#         str_aux += '\t' + str(user['inactivity_time']) + '\tdays_inactive'
-#         try:
-#             # remove the access key
-#             response = client.delete_access_key(
-#                 AccessKeyId='AKIDPMS9RO4H3FEXAMPLE',
-#                 UserName=user['username'],
-#             )
-#             str_aux = 'SUCCESS\t' + str_aux
-#             create_log_cloudwatch(str_aux, 'user')
-#         except Exception as e:
-#             # error to remove ability to use console
-#             str_aux = 'ERROR\t' + str_aux
-#             create_log_cloudwatch(str_aux, 'user')
-#             print(e)
     
+    # Delete unused access keys        
+    timeLimit = datetime.now() - timedelta( days = int(90) )
+    concat_list_key = inactive_past_90_days_key + never_used_key
+    deleted_access_key = []
+    for user in concat_list_key:
+        try:
+            accessKeys = client.list_access_keys(UserName=user['username'])
+            # Iterate over the keys
+            for key in accessKeys['AccessKeyMetadata']:
+                if key['CreateDate'].date() <= timeLimit.date():
+                    
+                    str_aux = str(user['username']) + '\tdisable_access_key\t' + str(key['AccessKeyId']) + '\t' + str((date.today() - key['CreateDate'].date()).days) + '\t' +str('key_age')
+                    if 'inactivity_time' in user:
+                        str_aux += '\t' + str(user['inactivity_time']) + '\tdays_inactive'
+                    
+                    try:
+                        # remove the access key
+                        response = client.delete_access_key(
+                            AccessKeyId=key['AccessKeyId'],
+                            UserName=user['username'],
+                        )
+                        str_aux = 'SUCCESS\t' + str_aux
+                        create_log_cloudwatch(str_aux, 'key')
+                    except Exception as e:
+                        # error to remove ability to use console
+                        str_aux = 'ERROR\t' + str_aux
+                        create_log_cloudwatch(str_aux, 'key')
+                        print(e)
+        except:
+            pass
+        
+    
+    # delete users without login and at least one key
+    for user in users:
+        if user.password_enabled == 'false' or user.password_enabled == 'N/A':
+            if user.access_key_1_active == 'false' or user.access_key_1_active == 'N/A':
+                if user.access_key_2_active == 'false' or user.access_key_2_active == 'N/A':
+                    str_aux = str(user.user) + '\tusername_deleted'
+                    try:
+                        response = client.delete_user(
+                            UserName=user.user
+                        )
+                        str_aux = 'SUCCESS\t' + str_aux
+                        create_log_cloudwatch(str_aux, 'user')
+                        print(str_aux)
+                    except Exception as e:
+                        # error to remove user
+                        str_aux = 'ERROR\t' + str_aux
+                        create_log_cloudwatch(str_aux, 'user')
+                        print(str_aux)
+                        print(e)
 
     return {
         "statusCode": 200,
