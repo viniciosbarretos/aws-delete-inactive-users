@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from dateutil import parser
 from botocore.exceptions import ClientError
 from collections import namedtuple
+import time
 
 # initialize IAM connection
 resource = boto3.resource('iam')
@@ -74,7 +75,8 @@ def lambda_handler(event, context):
                 never_logged_in_user.append({
                         'username': user.user
                     })
-              
+            
+        #########################  
         # user has only api keys
         else:
             # check if access key 1 is active
@@ -90,14 +92,14 @@ def lambda_handler(event, context):
                     if delta >= 90:
                         inactive_past_90_days_key.append({
                             'username': user.user,
-                            'key': 'key1',
+                            'key': '1',
                             'inactivity_time': delta
                         })
                         
                 except:
                     never_used_key.append({
                         'username': user.user,
-                        'key': 'key1'
+                        'key': '1'
                     })
                     
             # check if access key 1 is active
@@ -113,39 +115,96 @@ def lambda_handler(event, context):
                     if delta >= 90:
                         inactive_past_90_days_key.append({
                             'username': user.user,
-                            'key': 'key2',
+                            'key': '2',
                             'inactivity_time': delta
                         })
                         
                 except:
                     never_used_key.append({
                         'username': user.user,
-                        'key': 'key2'
+                        'key': '2'
                     })
                 
 
-        
-    print(inactive_past_90_days_user)
-    print(never_logged_in_user)
-    print()
-    print(inactive_past_90_days_key)
-    print(never_used_key)
+    # Log to lambda cloudwatch operational info
+    print('inactive_past_90_days_user\t', inactive_past_90_days_user)
+    print('never_logged_in_user\t', never_logged_in_user)
+    print('inactive_past_90_days_key\t', inactive_past_90_days_key)
+    print('never_used_key\t', never_used_key)
     
-    # timestamp = int(round(time.time() * 1000))
-    # response = logs.put_log_events(
-    # logGroupName='disable-inactive-unused-iam',
-    # logStreamName='user',
-    # logEvents=[
-    #         {
-    # 'timestamp': timestamp,
-    # 'message': time.strftime('%Y-%m-%d %H:%M:%S')+'\tHello world, here is our first log message!'
-    #         }
-    #     ]
-    # )
-        
+    for user in inactive_past_90_days_user:
+        str_aux = str(user['username']) + '\t' + 'disable_console_access'
+        str_aux += '\t' + str(user['inactivity_time']) + '\tdays_inactive'
+        try:
+            # remove the login_profile/password/ability to use the Console
+            client.delete_login_profile(UserName=user['username'])
+            str_aux = 'SUCCESS\t' + str_aux
+            create_log_cloudwatch(str_aux, 'user')
+        except Exception as e:
+            # error to remove ability to use console
+            str_aux = 'ERROR\t' + str_aux
+            create_log_cloudwatch(str_aux, 'user')
+            print(e)
+    
+    
+    for user in never_logged_in_user:
+        str_aux = str(user['username']) + '\t' + 'disable_console_access'
+        try:
+            # remove the login_profile/password/ability to use the Console
+            client.delete_login_profile(UserName=user['username'])
+            str_aux = 'SUCCESS\t' + str_aux
+            create_log_cloudwatch(str_aux, 'user')
+        except Exception as e:
+            # error to remove ability to use console
+            str_aux = 'ERROR\t' + str_aux
+            create_log_cloudwatch(str_aux, 'user')
+            print(e)
+            
+            
+#     for user in inactive_past_90_days_key:
+#         str_aux = str(user['username']) + '\t' + 'disable_access_key' + str(user['key'])
+#         str_aux += '\t' + str(user['inactivity_time']) + '\tdays_inactive'
+#         try:
+#             # remove the access key
+#             response = client.delete_access_key(
+#                 AccessKeyId='AKIDPMS9RO4H3FEXAMPLE',
+#                 UserName=user['username'],
+#             )
+#             str_aux = 'SUCCESS\t' + str_aux
+#             create_log_cloudwatch(str_aux, 'user')
+#         except Exception as e:
+#             # error to remove ability to use console
+#             str_aux = 'ERROR\t' + str_aux
+#             create_log_cloudwatch(str_aux, 'user')
+#             print(e)
+    
+
     return {
         "statusCode": 200,
         "body": json.dumps({
-            "message": "Disable Inactive IAM Users Execution successful",
+            "message": "Function executed successfully",
         }),
     }
+    
+
+def create_log_cloudwatch(message, log_stream_name):
+    logs = boto3.client('logs')
+    
+    response = logs.describe_log_streams(
+        logGroupName='disable-inactive-unused-iam',
+        logStreamNamePrefix=log_stream_name
+    )
+    
+    event_log = {
+    	'logGroupName': 'disable-inactive-unused-iam',
+    	'logStreamName': log_stream_name,
+    	'logEvents': [{
+    		'timestamp': int(round(time.time() * 1000)),
+    		'message': message
+    	}],
+    }
+    
+    if 'uploadSequenceToken' in response['logStreams'][0]:
+        event_log.update({'sequenceToken': response['logStreams'][0] ['uploadSequenceToken']})
+
+    response = logs.put_log_events(**event_log)
