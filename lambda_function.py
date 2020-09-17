@@ -188,7 +188,7 @@ def lambda_handler(event, context):
                         create_log_cloudwatch(str_aux, 'key')
                     except Exception as e:
                         # error to remove ability to use console
-                        str_aux = 'ERROR\t' + str_aux
+                        str_aux = 'ERROR\t' + str(e) + '\t' + str_aux
                         create_log_cloudwatch(str_aux, 'key')
                         print(e)
         except:
@@ -200,6 +200,24 @@ def lambda_handler(event, context):
         if user.password_enabled == 'false' or user.password_enabled == 'N/A':
             if user.access_key_1_active == 'false' or user.access_key_1_active == 'N/A':
                 if user.access_key_2_active == 'false' or user.access_key_2_active == 'N/A':
+                    
+                    # detach user policies
+                    try:
+                        policies = client.list_attached_user_policies(
+                            UserName=user.user
+                        )
+                        for policy in policies['AttachedPolicies']:
+                            response = client.detach_user_policy(
+                                UserName=user.user,
+                                PolicyArn=policy['PolicyArn']
+                            )
+                            str_aux = 'INFO\t' + str(user.user) + '\tdetach_policy' + str(policy['PolicyArn'])
+                            create_log_cloudwatch(str_aux, 'user')
+                    except:
+                        str_aux = 'ERROR\t' + str(user.user) + '\tdetach_policy'
+                        create_log_cloudwatch(str_aux, 'user')
+                    
+                    
                     str_aux = str(user.user) + '\tusername_deleted'
                     try:
                         response = client.delete_user(
