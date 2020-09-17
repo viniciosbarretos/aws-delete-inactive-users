@@ -201,21 +201,76 @@ def lambda_handler(event, context):
             if user.access_key_1_active == 'false' or user.access_key_1_active == 'N/A':
                 if user.access_key_2_active == 'false' or user.access_key_2_active == 'N/A':
                     
-                    # detach user policies
+                    # detach attached policies
                     try:
                         policies = client.list_attached_user_policies(
                             UserName=user.user
                         )
                         for policy in policies['AttachedPolicies']:
-                            response = client.detach_user_policy(
-                                UserName=user.user,
-                                PolicyArn=policy['PolicyArn']
-                            )
-                            str_aux = 'INFO\t' + str(user.user) + '\tdetach_policy' + str(policy['PolicyArn'])
-                            create_log_cloudwatch(str_aux, 'user')
-                    except:
-                        str_aux = 'ERROR\t' + str(user.user) + '\tdetach_policy'
-                        create_log_cloudwatch(str_aux, 'user')
+                            try:
+                                response = client.detach_user_policy(
+                                    UserName=user.user,
+                                    PolicyArn=policy['PolicyArn']
+                                )
+                                str_aux = 'INFO\t' + str(user.user) + '\tdetach_policy' + str(policy['PolicyArn'])
+                                create_log_cloudwatch(str_aux, 'user')
+                                print(str_aux)
+                            except Exception as e:
+                                str_aux = 'ERROR\t' + str(e) + '\t' + str(user.user) + '\tdetach_policy\t' + str(policy['PolicyArn'])
+                                print(str_aux)
+                    except Exception as e:
+                        str_aux = 'ERROR\t' + str(e) + '\t' + str(user.user) + '\tlist_policy'
+                        # create_log_cloudwatch(str_aux, 'user')
+                        # print(str_aux)
+                        print(str_aux)
+                        
+                    
+                    # detach user groups
+                    try:
+                        groups = client.list_groups_for_user(
+                            UserName=user.user
+                        )
+                        for group in groups['Groups']:
+                            try:
+                                response = client.remove_user_from_group(
+                                    GroupName=group['GroupName'],
+                                    UserName=user.user
+                                )
+                                str_aux = 'INFO\t' + str(user.user) + '\tremove_user_from_group\t' + str(group['GroupName'])
+                                create_log_cloudwatch(str_aux, 'user')
+                                print(str_aux)
+                            except Exception as e:
+                                str_aux = 'ERROR\t' + str(e) + '\t' + str(user.user) + '\tremove_user_from_group\t' + str(group['GroupName'])
+                                print(str_aux)
+                    except Exception as e:
+                        str_aux = 'ERROR\t' + str(e) + '\t' + str(user.user) + '\tlist_groups'
+                        # create_log_cloudwatch(str_aux, 'user')
+                        # print(str_aux)
+                        print(str_aux)
+                        
+                    
+                    # remove user policies
+                    try:
+                        policies = client.list_user_policies(
+                            UserName=user.user
+                        )
+                        for policy in policies['PolicyNames']:
+                            try:
+                                response = client.delete_user_policy(
+                                    UserName=user.user,
+                                    PolicyName=policy
+                                )
+                                str_aux = 'INFO\t' + str(user.user) + '\tdetach_policy_user' + str(policy)
+                                create_log_cloudwatch(str_aux, 'user')
+                                print(str_aux)
+                            except Exception as e:
+                                str_aux = 'ERROR\t' + str(e) + '\t' + str(user.user) + '\tdetach_policy_user\t' + str(policy)
+                                print(str_aux)
+                    except Exception as e:
+                        str_aux = 'ERROR\t' + str(e) + '\t' + str(user.user) + '\tlist_policy_user'
+                        # create_log_cloudwatch(str_aux, 'user')
+                        # print(str_aux)
+                        print(str_aux)
                     
                     
                     str_aux = str(user.user) + '\tusername_deleted'
@@ -228,7 +283,7 @@ def lambda_handler(event, context):
                         print(str_aux)
                     except Exception as e:
                         # error to remove user
-                        str_aux = 'ERROR\t' + str_aux
+                        str_aux = 'ERROR\t' + str(e) + '\t' + str_aux
                         create_log_cloudwatch(str_aux, 'user')
                         print(str_aux)
                         print(e)
