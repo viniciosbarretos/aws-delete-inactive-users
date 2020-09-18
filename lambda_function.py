@@ -1,7 +1,3 @@
-#########################
-#    Work in progress   #
-#########################
-
 import boto3
 import json
 import os
